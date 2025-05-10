@@ -2,6 +2,7 @@ import os
 import json
 import random
 import asyncio
+import pytz
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (ApplicationBuilder, CommandHandler, CallbackQueryHandler,
@@ -137,6 +138,7 @@ async def handle_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     minute=minute,
     id=user_id,
     replace_existing=True
+    timezone='Europe/Moscow'
 )
     await update.message.reply_text(f"Готово! Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
 
@@ -193,6 +195,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     minute=minute,
     id=user_id,
     replace_existing=True
+    timezone='Europe/Moscow'
 )
         await query.edit_message_text(f"Время обновлено. Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
         return
@@ -242,7 +245,7 @@ async def daily_check():
                 app.bot.send_photo(chat_id=int(user_id), photo=img,
                                    caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
 
-scheduler.add_job(lambda: app.create_task(daily_check()), 'cron', hour=0, minute=5)
+scheduler.add_job(lambda: app.create_task(daily_check()), 'cron', hour=0, minute=5, timezone='Europe/Moscow')
 
 # === ЗАПУСК ===
 if __name__ == '__main__':
