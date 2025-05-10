@@ -3,6 +3,7 @@ import json
 import random
 import asyncio
 from datetime import datetime, timedelta
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (ApplicationBuilder, CommandHandler, CallbackQueryHandler,
                           ContextTypes, MessageHandler, filters)
@@ -19,7 +20,6 @@ IMG_GRIFFITH = "assets/griffith/"
 scheduler = BackgroundScheduler()
 scheduler.start()
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-loop = asyncio.get_event_loop()
 
 # === ЗАГРУЗКА ДАННЫХ ===
 def load_data():
@@ -34,7 +34,7 @@ def save_data(data):
 
 # === Планировщик обёртки для async-функции ===
 def schedule_motivation(uid):
-    return lambda: app.create_task(send_motivation(uid))
+    return lambda: asyncio.run_coroutine_threadsafe(send_motivation(uid), app.application.loop)
 
 def get_random_quote():
     with open(QUOTES_FILE, 'r') as f:
@@ -46,23 +46,6 @@ def get_random_image(folder):
     return os.path.join(folder, random.choice(files))
 
 # === КОМАНДЫ ===
-async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "🛠 Доступные команды:\n"
-        "/start — установить или изменить время напоминания\n"
-        "/stop — остановить ежедневные напоминания\n"
-        "/time — показать текущее установленное время\n"
-        "/help — показать список команд"
-    )
-    await update.message.reply_text(help_text)
-async def show_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    data = load_data()
-    user = data.get(user_id)
-    if user and user.get("hour") is not None and user.get("minute") is not None:
-        await update.message.reply_text(f"Текущее установленное время напоминания — {user['hour']:02d}:{user['minute']:02d} по МСК.")
-    else:
-        await update.message.reply_text("Ты ещё не установил время. Используй /start, чтобы задать его.")
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
@@ -110,7 +93,6 @@ async def handle_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user is None:
         return
 
-    # если время уже установлено, спрашиваем про изменение
     if user["hour"] is not None and user["minute"] is not None and not user.get("pending_change"):
         user["temp_hour"] = hour
         user["temp_minute"] = minute
@@ -129,14 +111,7 @@ async def handle_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data[user_id]["pending_change"] = False
     save_data(data)
 
-    scheduler.add_job(
-    lambda: asyncio.run_coroutine_threadsafe(send_motivation(user_id), loop),
-    'cron',
-    hour=hour,
-    minute=minute,
-    id=user_id,
-    replace_existing=True
-)
+    scheduler.add_job(schedule_motivation(user_id), 'cron', hour=hour, minute=minute, id=user_id, replace_existing=True)
     await update.message.reply_text(f"Готово! Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
 
 # === МОТИВАЦИЯ ===
@@ -182,17 +157,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user["hour"] = hour
         user["minute"] = minute
         user["pending_change"] = False
-        user.pop("temp_hour", None)
-        user.pop("temp_minute", None)
         save_data(data)
-        scheduler.add_job(
-    lambda: asyncio.run_coroutine_threadsafe(send_motivation(user_id), loop),
-    'cron',
-    hour=hour,
-    minute=minute,
-    id=user_id,
-    replace_existing=True
-)
+        scheduler.add_job(schedule_motivation(user_id), 'cron', hour=hour, minute=minute, id=user_id, replace_existing=True)
         await query.edit_message_text(f"Время обновлено. Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
         return
 
@@ -238,18 +204,26 @@ async def daily_check():
             save_data(data)
             image = get_random_image(IMG_GRIFFITH)
             with open(image, 'rb') as img:
-                app.bot.send_photo(chat_id=int(user_id), photo=img,
-                                   caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
+                await app.bot.send_photo(chat_id=int(user_id), photo=img,
+                                         caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
 
-scheduler.add_job(lambda: app.create_task(daily_check()), 'cron', hour=0, minute=5)
+scheduler.add_job(lambda: asyncio.run(daily_check()), 'cron', hour=0, minute=5)
 
-# === ЗАПУСК ===
+# === WEBHOOK ===
+web_app = Flask(__name__)
+
+@web_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app.bot)
+    asyncio.run(app.process_update(update))
+    return 'ok'
+
 if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stop", stop))
-    app.add_handler(CommandHandler("time", show_time))
-    app.add_handler(CommandHandler("help", show_help))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
-    print("Бот запущен")
-    app.run_polling()
+
+    print("Бот запущен через вебхук")
+    asyncio.run(app.bot.set_webhook("https://berserk-bot-tmvg.onrender.com/" + BOT_TOKEN))
+    web_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
