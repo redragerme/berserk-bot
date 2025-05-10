@@ -9,7 +9,7 @@ from telegram.ext import (ApplicationBuilder, CommandHandler, CallbackQueryHandl
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # === НАСТРОЙКИ ===
-BOT_TOKEN = "7784436054:AAGdAzDXg_lJTKF7_J63gVkoOCGL2A3WWgY"
+BOT_TOKEN = os.getenv("7784436054:AAGdAzDXg_lJTKF7_J63gVkoOCGL2A3WWgY")
 DATA_FILE = "database.json"
 QUOTES_FILE = "assets/quotes.txt"
 IMG_RANDOM = "assets/random/"
