@@ -240,3 +240,21 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
     print("Бот запущен")
     app.run_polling()
+
+import threading
+import http.server
+import socketserver
+
+def run_fake_server():
+    port = int(os.environ.get("PORT", 10000))
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", port), handler) as httpd:
+        print(f"Fake server running on port {port}")
+        httpd.serve_forever()
+
+if __name__ == "__main__":
+    # запускаем polling в отдельном потоке
+    threading.Thread(target=lambda: asyncio.run(app.run_polling()), daemon=True).start()
+
+    # запускаем фейковый HTTP-сервер на порту, чтобы Render видел, что порт открыт
+    run_fake_server()
