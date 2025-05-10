@@ -131,15 +131,6 @@ async def handle_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data[user_id]["pending_change"] = False
     save_data(data)
 
-    scheduler.add_job(
-    lambda: asyncio.run_coroutine_threadsafe(send_motivation(user_id), loop),
-    'cron',
-    hour=hour,
-    minute=minute,
-    id=user_id,
-    replace_existing=True
-    timezone='Europe/Moscow'
-)
     await update.message.reply_text(f"Готово! Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
 
 # === МОТИВАЦИЯ ===
@@ -188,15 +179,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.pop("temp_hour", None)
         user.pop("temp_minute", None)
         save_data(data)
-        scheduler.add_job(
-    lambda: asyncio.run_coroutine_threadsafe(send_motivation(user_id), loop),
-    'cron',
-    hour=hour,
-    minute=minute,
-    id=user_id,
-    replace_existing=True
-    timezone='Europe/Moscow'
-)
+
         await query.edit_message_text(f"Время обновлено. Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
         return
 
