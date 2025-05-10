@@ -18,6 +18,7 @@ IMG_GRIFFITH = "assets/griffith/"
 
 scheduler = BackgroundScheduler()
 scheduler.start()
+print("BOT_TOKEN =", BOT_TOKEN)
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 loop = asyncio.get_event_loop()
 
