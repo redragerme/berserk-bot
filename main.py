@@ -10,7 +10,7 @@ from telegram.ext import (ApplicationBuilder, CommandHandler, CallbackQueryHandl
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # === НАСТРОЙКИ ===
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Задать как env var на Render
 DATA_FILE = "database.json"
 QUOTES_FILE = "assets/quotes.txt"
 IMG_RANDOM = "assets/random/"
@@ -19,9 +19,11 @@ IMG_GRIFFITH = "assets/griffith/"
 
 scheduler = BackgroundScheduler()
 scheduler.start()
-app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# === ЗАГРУЗКА ДАННЫХ ===
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+web_app = Flask(__name__)
+
+# === ЗАГРУЗКА И СОХРАНЕНИЕ ===
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
@@ -31,10 +33,6 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
-
-# === Планировщик обёртки для async-функции ===
-def schedule_motivation(uid):
-    return lambda: asyncio.run_coroutine_threadsafe(send_motivation(uid), app.application.loop)
 
 def get_random_quote():
     with open(QUOTES_FILE, 'r') as f:
@@ -62,7 +60,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(data)
 
     await update.message.reply_text("Привет! В какое время по МСК ты хочешь получать мотивацию каждый день? Напиши в формате ЧЧ:ММ")
-    return
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -72,8 +69,28 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data[user_id]["hour"] = None
         data[user_id]["minute"] = None
         save_data(data)
-        scheduler.remove_job(user_id) if scheduler.get_job(user_id) else None
+        if scheduler.get_job(user_id):
+            scheduler.remove_job(user_id)
         await update.message.reply_text("Ты больше не будешь получать напоминания. Чтобы включить снова — отправь /start")
+
+async def show_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    data = load_data()
+    user = data.get(user_id)
+    if user and user.get("hour") is not None and user.get("minute") is not None:
+        await update.message.reply_text(f"Текущее установленное время напоминания — {user['hour']:02d}:{user['minute']:02d} по МСК.")
+    else:
+        await update.message.reply_text("Ты ещё не установил время. Используй /start, чтобы задать его.")
+
+async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🛠 Доступные команды:\n"
+        "/start — установить или изменить время напоминания\n"
+        "/stop — остановить ежедневные напоминания\n"
+        "/time — показать текущее установленное время\n"
+        "/help — показать список команд"
+    )
+    await update.message.reply_text(text)
 
 # === ОБРАБОТКА ВРЕМЕНИ ===
 async def handle_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,50 +110,10 @@ async def handle_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user is None:
         return
 
-    if user["hour"] is not None and user["minute"] is not None and not user.get("pending_change"):
-        user["temp_hour"] = hour
-        user["temp_minute"] = minute
-        user["pending_change"] = True
-        save_data(data)
-
-        keyboard = [[
-            InlineKeyboardButton("Да", callback_data=f"change_yes|{user_id}"),
-            InlineKeyboardButton("Нет", callback_data=f"change_no|{user_id}")
-        ]]
-        await update.message.reply_text("Ты уже установил время. Хочешь изменить его?", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-
-    data[user_id]["hour"] = hour
-    data[user_id]["minute"] = minute
-    data[user_id]["pending_change"] = False
+    user["hour"] = hour
+    user["minute"] = minute
     save_data(data)
-
-    scheduler.add_job(schedule_motivation(user_id), 'cron', hour=hour, minute=minute, id=user_id, replace_existing=True)
-    await update.message.reply_text(f"Готово! Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
-
-# === МОТИВАЦИЯ ===
-async def send_motivation(user_id):
-    data = load_data()
-    user = data.get(user_id)
-
-    if not user:
-        return
-
-    today = datetime.now().date().isoformat()
-    if user.get("last_checkin_date") == today:
-        return
-
-    quote = get_random_quote()
-    image_path = get_random_image(IMG_RANDOM)
-
-    keyboard = [[
-        InlineKeyboardButton("Да", callback_data=f"yes|{user_id}"),
-        InlineKeyboardButton("Нет", callback_data=f"no|{user_id}")
-    ]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    with open(image_path, 'rb') as img:
-        await app.bot.send_photo(chat_id=int(user_id), photo=img, caption=f"{quote}\n\nТы готов сегодня стать на шаг ближе к лучшей версии себя?", reply_markup=reply_markup)
+    await update.message.reply_text(f"Отлично! Я буду напоминать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
 
 # === ОБРАБОТКА КНОПОК ===
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -149,25 +126,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now().date().isoformat()
 
     if not user:
-        return
-
-    if action == "change_yes":
-        hour = user.get("temp_hour")
-        minute = user.get("temp_minute")
-        user["hour"] = hour
-        user["minute"] = minute
-        user["pending_change"] = False
-        save_data(data)
-        scheduler.add_job(schedule_motivation(user_id), 'cron', hour=hour, minute=minute, id=user_id, replace_existing=True)
-        await query.edit_message_text(f"Время обновлено. Я буду писать тебе каждый день в {hour:02d}:{minute:02d} по МСК.")
-        return
-
-    elif action == "change_no":
-        user["pending_change"] = False
-        user.pop("temp_hour", None)
-        user.pop("temp_minute", None)
-        save_data(data)
-        await query.edit_message_text("Окей, оставим старое время без изменений.")
         return
 
     if user.get("last_checkin_date") == today:
@@ -183,7 +141,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(image, 'rb') as img:
             await context.bot.send_photo(chat_id=query.message.chat_id, photo=img,
                                          caption=f"Ты успешно отметился, так держать!\n\n🔥 Серия: {user['checkin_streak']} дней")
-
     elif action == "no":
         image = get_random_image(IMG_GRIFFITH)
         with open(image, 'rb') as img:
@@ -204,26 +161,27 @@ async def daily_check():
             save_data(data)
             image = get_random_image(IMG_GRIFFITH)
             with open(image, 'rb') as img:
-                await app.bot.send_photo(chat_id=int(user_id), photo=img,
-                                         caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
+                await application.bot.send_photo(chat_id=int(user_id), photo=img,
+                                                 caption="Твой путь прервался. Но ты можешь начать сначала. Отправь /start.")
 
 scheduler.add_job(lambda: asyncio.run(daily_check()), 'cron', hour=0, minute=5)
 
 # === WEBHOOK ===
-web_app = Flask(__name__)
-
 @web_app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), app.bot)
-    asyncio.run(app.process_update(update))
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    asyncio.run(application.process_update(update))
     return 'ok'
 
+# === СТАРТ БОТА ===
 if __name__ == '__main__':
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stop", stop))
-    app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(CommandHandler("time", show_time))
+    application.add_handler(CommandHandler("help", show_help))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
 
     print("Бот запущен через вебхук")
-    asyncio.run(app.bot.set_webhook("https://berserk-bot-tmvg.onrender.com/" + BOT_TOKEN))
+    asyncio.run(application.bot.set_webhook("https://berserk-bot-tmvg.onrender.com/" + BOT_TOKEN))
     web_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
