@@ -19,7 +19,7 @@ IMG_GUTS = "assets/guts/"
 IMG_GRIFFITH = "assets/griffith/"
 
 scheduler = AsyncIOScheduler()
-print("BOT_TOKEN =", BOT_TOKEN)
+print("Bot started.")
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 loop = asyncio.get_event_loop()
@@ -273,6 +273,9 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
 async def main():
     await app.initialize()
     await app.start()
+    await app.run_polling()
+
+if __name__ == "__main__":
     scheduler.start()
     # Восстанавливаем все напоминания после старта
     data = load_data()
@@ -289,8 +292,5 @@ async def main():
                 id=user_id,
                 replace_existing=True
             )
-    await app.run_polling()
-
-if __name__ == "__main__":
     threading.Thread(target=run_fake_server, daemon=True).start()
-    asyncio.run(main())
+    app.run_polling()
