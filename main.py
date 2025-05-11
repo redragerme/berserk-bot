@@ -252,14 +252,15 @@ def run_fake_server():
 
 if __name__ == "__main__":
     # запускаем polling в отдельном потоке
-    async def main():
-     await app.initialize()
-     await app.start()
-     await app.updater.start_polling()
-     await app.updater.idle()
+ async def main():
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    scheduler.shutdown(wait=False)
+    await app.updater.idle()
 
 threading.Thread(target=lambda: asyncio.run(main()), daemon=True).start()
 
 
-    # запускаем фейковый HTTP-сервер на порту, чтобы Render видел, что порт открыт
-    run_fake_server()
+# запускаем фейковый HTTP-сервер на порту, чтобы Render видел, что порт открыт
+run_fake_server()
