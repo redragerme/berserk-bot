@@ -8,7 +8,7 @@ from pytz import timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (ApplicationBuilder, CommandHandler, CallbackQueryHandler,
                           ContextTypes, MessageHandler, filters)
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -18,8 +18,7 @@ IMG_RANDOM = "assets/random/"
 IMG_GUTS = "assets/guts/"
 IMG_GRIFFITH = "assets/griffith/"
 
-scheduler = BackgroundScheduler()
-scheduler.start()
+scheduler = AsyncIOScheduler()
 print("BOT_TOKEN =", BOT_TOKEN)
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -83,6 +82,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(data)
 
     await update.message.reply_text("Привет! В какое время по МСК ты хочешь получать мотивацию каждый день? Напиши в формате ЧЧ:ММ")
+    data[user_id]["hour"] = None
+    data[user_id]["minute"] = None
+    save_data(data)
     return
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,6 +132,16 @@ async def handle_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data[user_id]["hour"] = hour
     data[user_id]["minute"] = minute
+    scheduler.add_job(
+        schedule_motivation(user_id),
+        'cron',
+        hour=hour,
+        minute=minute,
+        timezone='Europe/Moscow',
+        id=user_id,
+        replace_existing=True
+)
+
     data[user_id]["pending_change"] = False
     save_data(data)
 
@@ -258,10 +270,31 @@ app.add_handler(CommandHandler("help", show_help))
 app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
 
+async def main():
+    scheduler.start()
+    # Восстанавливаем все напоминания после старта
+    data = load_data()
+    for user_id, user in data.items():
+        hour = user.get("hour")
+        minute = user.get("minute")
+        if hour is not None and minute is not None:
+            scheduler.add_job(
+                schedule_motivation(user_id),
+                'cron',
+                hour=hour,
+                minute=minute,
+                timezone='Europe/Moscow',
+                id=user_id,
+                replace_existing=True
+            )
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.wait_until_closed()
+    await app.stop()
+    await app.shutdown()
+
 if __name__ == "__main__":
     threading.Thread(target=run_fake_server, daemon=True).start()
-    asyncio.run(app.run_polling())
-
-
-# запускаем фейковый HTTP-сервер на порту, чтобы Render видел, что порт открыт
-run_fake_server()
+    asyncio.run(main())
