@@ -259,14 +259,8 @@ app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
 
 if __name__ == "__main__":
-    # запускаем polling в отдельном потоке
-    async def main():
-        await app.initialize()
-        await app.start()
-        await app.updater.start_polling()
-        await app.updater.idle()
-        
-    threading.Thread(target=lambda: asyncio.run(main()), daemon=True).start()
+    threading.Thread(target=run_fake_server, daemon=True).start()
+    asyncio.run(app.run_polling())
 
 
 # запускаем фейковый HTTP-сервер на порту, чтобы Render видел, что порт открыт
