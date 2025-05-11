@@ -225,8 +225,8 @@ async def daily_check():
             save_data(data)
             image = get_random_image(IMG_GRIFFITH)
             with open(image, 'rb') as img:
-                app.bot.send_photo(chat_id=int(user_id), photo=img,
-                                   caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
+             await app.bot.send_photo(chat_id=int(user_id), photo=img,
+                         caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
 
 scheduler.add_job(lambda: app.create_task(daily_check()), 'cron', hour=0, minute=5, timezone='Europe/Moscow')
 
