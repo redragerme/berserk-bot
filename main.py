@@ -276,21 +276,7 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    scheduler.start()
-    # Восстанавливаем все напоминания после старта
-    data = load_data()
-    for user_id, user in data.items():
-        hour = user.get("hour")
-        minute = user.get("minute")
-        if hour is not None and minute is not None:
-            scheduler.add_job(
-                schedule_motivation(user_id),
-                'cron',
-                hour=hour,
-                minute=minute,
-                timezone='Europe/Moscow',
-                id=user_id,
-                replace_existing=True
-            )
     threading.Thread(target=run_fake_server, daemon=True).start()
-    app.run_polling()
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    loop.run_forever()
