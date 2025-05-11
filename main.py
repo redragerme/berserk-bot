@@ -155,7 +155,7 @@ async def send_motivation(user_id):
     if not user:
         return
 
-    today = datetime.now().date().isoformat()
+    today = datetime.now(timezone('Europe/Moscow')).date().isoformat()
     if user.get("last_checkin_date") == today:
         return
 
@@ -179,7 +179,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action, user_id = query.data.split("|")
     user = data.get(user_id)
-    today = datetime.now().date().isoformat()
+    today = datetime.now(timezone('Europe/Moscow')).date().isoformat()
 
     if not user:
         return
@@ -271,6 +271,8 @@ app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
 
 async def main():
+    await app.initialize()
+    await app.start()
     scheduler.start()
     # Восстанавливаем все напоминания после старта
     data = load_data()
@@ -287,13 +289,7 @@ async def main():
                 id=user_id,
                 replace_existing=True
             )
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await app.updater.wait_until_closed()
-    await app.stop()
-    await app.shutdown()
+    await app.run_polling()
 
 if __name__ == "__main__":
     threading.Thread(target=run_fake_server, daemon=True).start()
