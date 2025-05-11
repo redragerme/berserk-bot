@@ -271,6 +271,7 @@ app.add_handler(CallbackQueryHandler(button))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
 
 async def main():
+    scheduler.start()
     await app.initialize()
     await app.start()
     await app.run_polling()
