@@ -21,6 +21,14 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 print("BOT_TOKEN =", BOT_TOKEN)
 app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("stop", stop))
+app.add_handler(CommandHandler("time", show_time))
+app.add_handler(CommandHandler("help", show_help))
+app.add_handler(CallbackQueryHandler(button))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
+
 loop = asyncio.get_event_loop()
 
 # === ЗАГРУЗКА ДАННЫХ ===
@@ -226,21 +234,11 @@ async def daily_check():
             image = get_random_image(IMG_GRIFFITH)
             with open(image, 'rb') as img:
              await app.bot.send_photo(chat_id=int(user_id), photo=img,
-                         caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
+                                      caption="Твой путь прервался, но у тебя есть шанс начать все заново. Отправь команду /start.")
 
 scheduler.add_job(lambda: app.create_task(daily_check()), 'cron', hour=0, minute=5, timezone='Europe/Moscow')
 
 # === ЗАПУСК ===
-if __name__ == '__main__':
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stop", stop))
-    app.add_handler(CommandHandler("time", show_time))
-    app.add_handler(CommandHandler("help", show_help))
-    app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_time))
-    print("Бот запущен")
-    app.run_polling()
-
 import threading
 import http.server
 import socketserver
@@ -254,7 +252,14 @@ def run_fake_server():
 
 if __name__ == "__main__":
     # запускаем polling в отдельном потоке
-    threading.Thread(target=lambda: asyncio.run(app.run_polling()), daemon=True).start()
+    async def main():
+     await app.initialize()
+     await app.start()
+     await app.updater.start_polling()
+     await app.updater.idle()
+
+threading.Thread(target=lambda: asyncio.run(main()), daemon=True).start()
+
 
     # запускаем фейковый HTTP-сервер на порту, чтобы Render видел, что порт открыт
     run_fake_server()
